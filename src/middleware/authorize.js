@@ -18,7 +18,7 @@ exports.authorization = async function (req, res, next) {
       console.log('user==>',decoded.user);
       
       if (decoded.user && decoded.user.Username !== "admin") {
-        const [profile] = await Profile.FindById(decoded.user.profileId);
+        const [profile] = await Profile.FindById(decoded.user.id);
         if (profile?.IsSuspended === "Y") {
           res
             .status(401)

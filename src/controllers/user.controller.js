@@ -541,7 +541,7 @@ exports.verifyToken = async function (req, res) {
     console.log(decoded.user);
 
     if (decoded.user) {
-      const [profile] = await Profile.FindById(decoded.user.profileId);
+      const [profile] = await Profile.FindById(decoded.user.id);
       if (profile?.IsSuspended === "Y") {
         res
           .status(401)

@@ -30,7 +30,7 @@ socket.config = (server) => {
         }
         socket.user = decoded.user;
         if (decoded.user.Username !== "admin") {
-          const [profile] = await Profile.FindById(decoded.user.profileId);
+          const [profile] = await Profile.FindById(decoded.user.id);
           if (profile?.IsSuspended === "Y") {
             const err = new Error("user has been suspended");
             return next(err);
