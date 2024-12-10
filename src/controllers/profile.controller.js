@@ -165,3 +165,18 @@ exports.deleteNotification = function (req, res) {
     res.json({ error: false, message: "Notification deleted successfully" });
   });
 };
+
+exports.readAllNotifications = async function (req, res) {
+  const { id } = req.params;
+  Profile.readAllNotifications(id, function (err) {
+    if (err) return utils.send500(res, err);
+    res.json({ error: false, message: "Notification updated successfully" });
+  });
+};
+
+exports.deleteAllNotification = function (req, res) {
+  Profile.deleteAllNotification(req.params.id, function (err, result) {
+    if (err) return utils.send500(res, err);
+    res.json({ error: false, message: "Notification deleted successfully" });
+  });
+};

@@ -35,7 +35,12 @@ router.put("/profile/:id", profileController.updateProfile);
 router.get("/notification/:id", profileController.getNotification);
 router.post("/user/verification/resend", userController.resendVerification);
 router.get("/edit-notification/:id", profileController.editNotifications);
+router.get("/read-all-notification/:id", profileController.readAllNotifications);
 router.delete("/:id", userController.delete);
 router.delete("/notification/:id", profileController.deleteNotification);
+router.delete(
+  "/delete-all-notification/:id",
+  profileController.deleteAllNotification
+);
 
 module.exports = router;

@@ -215,4 +215,49 @@ Profile.deleteNotification = function (user_id, result) {
   );
 };
 
+Profile.deleteAllNotification = function (user_id, result) {
+  db.query(
+    `DELETE n
+     FROM notifications n
+     LEFT JOIN groupMembers gm ON gm.groupId = n.groupId
+     LEFT JOIN chatRooms r ON r.id = n.roomId
+     WHERE (r.profileId1 = ? OR r.profileId2 = ?)
+     OR gm.profileId = ?
+     OR n.notificationToProfileId = ?
+    `,
+    [user_id, user_id, user_id, user_id],
+    function (err, res) {
+      if (err) {
+        console.log("error", err);
+        result(err, null);
+      } else {
+        console.log("notification deleted", res);
+        result(null, res);
+      }
+    }
+  );
+};
+
+Profile.readAllNotifications = function (id, result) {
+  db.query(
+    `UPDATE notifications n
+     LEFT JOIN groupMembers gm ON gm.groupId = n.groupId AND gm.profileId = ? 
+     LEFT JOIN chatRooms r ON r.id = n.roomId AND (r.profileId1 = ? OR r.profileId2 = ?)
+     SET n.isRead = 'Y'
+     WHERE n.isRead = 'N' 
+     AND (gm.profileId IS NOT NULL OR n.notificationToProfileId = ?);
+    `,
+    [id, id, id, id],
+    function (err, res) {
+      if (err) {
+        console.log("error", err);
+        result(err, null);
+      } else {
+        console.log("notification updated", res);
+        result(null, res);
+      }
+    }
+  );
+};
+
 module.exports = Profile;
