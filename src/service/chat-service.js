@@ -134,6 +134,7 @@ const getChatList = async function (params) {
                   r.updatedDate,
                   r.createdDate,
                   r.isDeleted,
+                  r.sentBy,
                   p.ID AS profileId,
                   p.Username,
                   p.FirstName,
@@ -151,7 +152,7 @@ LEFT JOIN
 WHERE
     (r.profileId1 = ? OR r.profileId2 = ?) AND r.isDeleted = 'N'
 GROUP BY
-    r.id, r.profileId1, r.isAccepted,r.updatedDate, p.ID, p.Username, p.FirstName, p.LastName, p.ProfilePicName
+    r.id, r.profileId1, r.isAccepted,r.updatedDate,r.sentBy, p.ID, p.Username, p.FirstName, p.LastName, p.ProfilePicName
 ORDER BY
 r.updatedDate desc;`;
     const values = [params.profileId, params.profileId];
@@ -264,31 +265,58 @@ const sendMessage = async function (params) {
         if (data.roomId) {
           const date = new Date();
           const query =
-            "update chatRooms set lastMessageText = ?,updatedDate = ? where id = ?";
-          const values = [data.messageText, date, data.roomId];
+            "update chatRooms set lastMessageText = ?,updatedDate = ?,sentBy = ? where id = ?";
+          const values = [data.messageText, date, data?.sentBy, data.roomId];
           const updatedRoom = await executeQuery(query, values);
-          const notification = await createNotification({
-            notificationToProfileId: params?.profileId,
-            roomId: data?.roomId,
-            notificationByProfileId: data?.sentBy,
-            actionType: "M",
-            msg: "sent you a message",
-          });
-          return { newMessage, notification };
+          if (params.messageType === "C" || params.messageType === "D") {
+            const notification = await createNotification({
+              notificationToProfileId: params?.profileId,
+              roomId: data?.roomId,
+              notificationByProfileId: data?.sentBy,
+              actionType: "M",
+              msg:
+                params.messageType === "C"
+                  ? "You have missed call from"
+                  : "has declined your call",
+              messageType: params.messageType,
+            });
+            return { newMessage, notification };
+          } else {
+            const notification = await createNotification({
+              notificationToProfileId: params?.profileId,
+              roomId: data?.roomId,
+              notificationByProfileId: data?.sentBy,
+              actionType: "M",
+              msg: "sent you a message",
+            });
+            return { newMessage, notification };
+          }
         }
         if (data.groupId) {
           const date = new Date();
           const query =
-            "update chatGroups set lastMessageText = ?,updatedDate = ? where id = ?";
-          const values = [data.messageText, date, data.groupId];
+            "update chatGroups set lastMessageText = ?,updatedDate = ?,sentBy = ? where id = ?";
+          const values = [data.messageText, date, data?.sentBy, data.groupId];
           const updatedGroup = await executeQuery(query, values);
-          const notification = await createNotification({
-            // notificationToProfileId: params.profileId,
-            groupId: data?.groupId,
-            notificationByProfileId: data?.sentBy,
-            actionType: "M",
-            msg: "sent you a message in group",
-          });
+          let notification = {};
+          if (params.messageType === "C") {
+            notification = await createNotification({
+              notificationToProfileId: params?.profileId,
+              roomId: data?.roomId,
+              notificationByProfileId: data?.sentBy,
+              actionType: "M",
+              msg: "You have missed call from",
+              messageType: params.messageType,
+            });
+          } else {
+            notification = await createNotification({
+              // notificationToProfileId: params.profileId,
+              groupId: data?.groupId,
+              notificationByProfileId: data?.sentBy,
+              actionType: "M",
+              msg: "sent you a message in group",
+            });
+          }
           if (params?.tags?.length > 0) {
             const notifications = [];
             for (const key in params?.tags) {
@@ -398,12 +426,19 @@ const createNotification = async function (params) {
       notificationByProfileId,
       actionType,
       msg,
+      messageType = "",
     } = params;
     const query =
       "SELECT ID,ProfilePicName, Username, FirstName,LastName from profile where ID = ?";
     const values = [notificationByProfileId];
     const userData = await executeQuery(query, values);
-    let desc = `${userData[0]?.Username || userData[0]?.FirstName} ${msg}`;
+
+    let desc;
+    if (messageType === "C") {
+      desc = `${msg} ${userData[0]?.Username || userData[0]?.FirstName}`;
+    } else {
+      desc = `${userData[0]?.Username || userData[0]?.FirstName} ${msg}`;
+    }
 
     const data = {
       notificationToProfileId: notificationToProfileId || null,
@@ -517,15 +552,15 @@ const editMessage = async function (params) {
     if (data.roomId) {
       const date = new Date();
       const query =
-        "update chatRooms set lastMessageText = ?,updatedDate = ? where id = ?";
-      const values = [data.messageText, date, data.roomId];
+        "update chatRooms set lastMessageText = ?,updatedDate = ?,sentBy = ? where id = ?";
+      const values = [data.messageText, date, data?.sentBy, data.roomId];
       const updatedRoom = await executeQuery(query, values);
     }
     if (data.groupId) {
       const date = new Date();
       const query =
-        "update chatGroups set lastMessageText = ?,updatedDate = ? where id = ?";
-      const values = [data.messageText, date, data.groupId];
+        "update chatGroups set lastMessageText = ?,updatedDate = ?,sentBy = ? where id = ?";
+      const values = [data.messageText, date, data?.sentBy, data.groupId];
       const updatedGroup = await executeQuery(query, values);
     }
     const query1 = "select * from messages where id = ?";
@@ -566,6 +601,7 @@ const deleteMessage = async function (params) {
         const values1 = [
           messageList?.messageText || null,
           messageList?.createdDate,
+          messageList?.sentBy,
           data.roomId,
         ];
         const updatedRoom = await executeQuery(query1, values1);
@@ -582,10 +618,11 @@ const deleteMessage = async function (params) {
         [messageList] = await executeQuery(query, values);
         // if (messageList) {
         // }
-        const query1 = `update chatGroups set lastMessageText = ?,updatedDate = ? where id = ?`;
+        const query1 = `update chatGroups set lastMessageText = ?,updatedDate = ?,sentBy = ? where id = ?`;
         const values1 = [
           messageList?.messageText || null,
           messageList?.createdDate,
+          messageList?.sentBy,
           data.groupId,
         ];
         const updatedRoom = await executeQuery(query1, values1);
@@ -675,18 +712,19 @@ const startCall = async function (params) {
     if (params) {
       const notificationToProfileId = params?.notificationToProfileId ?? null;
       const groupId = params?.groupId ?? null;
-      const query = `select * from calls_logs where (profileId = '${notificationToProfileId}' or groupId = '${groupId}') and isOnCall = 'Y' and endDate is null`;
+      const query = `select * from calls_logs where (roomId = '${params?.roomId}' or groupId = '${groupId}') and isOnCall = 'Y' and endDate is null`;
       const [callLogs] = await executeQuery(query);
       console.log("callLogs", callLogs);
 
       const callLogsData = {
-        profileId: params?.notificationByProfileId,
+        // profileId: params?.notificationByProfileId,
         isOnCall: "Y",
         roomId: params?.roomId || null,
         groupId: params?.groupId || null,
         callLink: params?.link || null,
+        members: callLogs?.members || 1,
       };
-      if (callLogsData) {
+      if (!callLogs) {
         const query = `insert into calls_logs set ?`;
         const values = [callLogsData];
         await executeQuery(query, values);
@@ -728,6 +766,7 @@ const startCall = async function (params) {
         const group = await getGroup({ groupId: data.groupId });
         notification["ProfilePicName"] = group?.profileImage;
         notification["groupName"] = group?.groupName;
+        notification["members"] = callLogsData?.members;
         if (callLogs?.isOnCall === "Y") {
           notification["isOnCall"] = callLogs?.isOnCall;
         } else {
@@ -744,17 +783,25 @@ const startCall = async function (params) {
 const declineCall = async function (params) {
   try {
     if (params) {
-      const query = `update calls_logs set endDate = now(), isOnCall = 'N' where roomId = ${params.roomId} and isOnCall = 'Y'`;
-      await executeQuery(query);
+      if (params) {
+        let query = "";
+        query = `update calls_logs set endDate = now(), isOnCall = 'N',members = ${params?.members} where (roomId = ${params?.roomId} or groupId = ${params?.groupId}) and isOnCall = 'Y' and members >=  1 and endDate is null`;
+        await executeQuery(query);
+      }
+      // else {
+      //   query = `update calls_logs set endDate = now(), isOnCall = 'N' where groupId = ${params.groupId} and isOnCall = 'Y' and endDate is null`;
+      // }
+      // const query = `update calls_logs set endDate = now(), isOnCall = 'N' where (roomId = ${params.roomId} or groupId = ${params.groupId}) and isOnCall = 'Y'`;
       const data = {
         notificationToProfileId: params?.notificationToProfileId || null,
         roomId: params?.roomId,
+        groupId: params?.groupId,
         notificationByProfileId: params?.notificationByProfileId || null,
         actionType: "DC",
         msg: params.message || "call decline...",
       };
-      const notification = await createNotification(data);
-      return notification;
+      // const notification = await createNotification(data);
+      return params?.members === 0 ? data : {};
     }
   } catch (error) {
     return error;
@@ -764,17 +811,30 @@ const declineCall = async function (params) {
 const pickUpCall = async function (params) {
   try {
     if (params) {
+      // const notificationToProfileId = params?.notificationToProfileId ?? null;
+      const groupId = params?.groupId ?? null;
+      const query = `select * from calls_logs where (roomId = '${params?.roomId}' or groupId = '${groupId}') and isOnCall = 'Y' and endDate is null`;
+      const [existingCall] = await executeQuery(query);
+
       const callLogs = {
-        profileId: params?.notificationByProfileId,
+        // profileId: params?.notificationByProfileId,
         isOnCall: "Y",
         roomId: params?.roomId || null,
         groupId: params?.groupId || null,
         callLink: params?.link || null,
+        members: existingCall.members + 1,
       };
-      if (callLogs) {
-        const query = `insert into calls_logs set ?`;
+      console.log("callLogs", existingCall);
+      if (existingCall) {
+        const query = `update calls_logs set members = ${callLogs?.members}, callLink = '${callLogs?.callLink}' where id = ${existingCall?.id}`;
         const values = [callLogs];
         await executeQuery(query, values);
+      } else {
+        if (callLogs) {
+          const query = `insert into calls_logs set ?`;
+          const values = [callLogs];
+          await executeQuery(query, values);
+        }
       }
       const data = {
         notificationToProfileId: params?.notificationToProfileId || null,
@@ -783,10 +843,11 @@ const pickUpCall = async function (params) {
         notificationByProfileId: params?.notificationByProfileId || null,
         actionType: "SC",
         msg: "call start...",
+        link: params?.link,
       };
-      const notification = await createNotification(data);
-      notification["link"] = params?.link;
-      return notification;
+      // const notification = await createNotification(data);
+      // notification["link"] = params?.link;
+      return data;
     }
   } catch (error) {
     return error;
@@ -827,35 +888,39 @@ const createGroups = async function (params) {
 
       let notifications = [];
       let groupList = {};
-      if (params.profileIds.length >= 0) {
-        for (const id of params.profileIds) {
-          const data = {
-            groupId: params?.groupId,
-            profileId: id,
-          };
-          if (params.isUpdate) {
+      if (params.isUpdate) {
+        if (params.profileIds.length >= 0) {
+          for (const id of params.profileIds) {
+            const data = {
+              groupId: params?.groupId,
+              profileId: id,
+            };
             const memberId = await addMembers(data);
+            console.log("ids==>", id);
+            const notification = await createNotification({
+              notificationByProfileId: params?.profileId,
+              notificationToProfileId: id,
+              actionType: "M",
+              groupId: params?.groupId,
+              msg: `${"added you in chat group"}`,
+            });
+            notifications.push(notification);
           }
           // if (memberId) {
-          console.log("ids==>", id);
-          const notification = await createNotification({
-            notificationByProfileId: params?.profileId,
-            notificationToProfileId: id,
-            actionType: "M",
-            groupId: params?.groupId,
-            msg: `${
-              params?.isUpdate
-                ? "added you in chat group"
-                : "changed group details"
-            }`,
-          });
 
-          notifications.push(notification);
           // }
+        } else {
+          groupList = await getGroup(params);
+          return { groupList };
         }
       } else {
-        groupList = await getGroup(params);
-        return { groupList };
+        const notification = await createNotification({
+          notificationByProfileId: params?.profileId,
+          actionType: "M",
+          groupId: params?.groupId,
+          msg: `${"changed group details"}`,
+        });
+        notifications.push(notification);
       }
       groupList = await getGroup(params);
       return { notifications, groupList, groupId: params?.groupId };
@@ -1024,7 +1089,7 @@ const userStatus = async function (id) {
   try {
     const query = `select userStatus from profile where ID = ${id}`;
     const [status] = await executeQuery(query);
-    return status?.userStatus;
+    return status.userStatus;
   } catch (error) {
     return error;
   }
@@ -1122,22 +1187,59 @@ const getRoomByProfileId = async function (data) {
 
 const endCall = async function (data) {
   try {
-    const query = `update calls_logs set isOnCall = 'N', endDate = NOW() where profileId = ${
-      data?.profileId
-    } and (groupId = ${data?.groupId || null} or roomId = ${
-      data?.roomId || null
-    }) and endDate is null`;
-    const callData = await executeQuery(query);
+    console.log("data==?", data);
+    // const query = `
+    //   UPDATE calls_logs
+    //   SET
+    //     isOnCall = ?,
+    //     ${data.members > 0  ? 'endDate = NOW(),' :''}
+    //     members = ?
+    //   WHERE
+    //     (groupId = ? OR roomId = ?)
+    //     AND endDate IS NULL
+    // `;
+
+    let query = `
+    UPDATE calls_logs
+    SET 
+      isOnCall = ?
+  `;
+    if (data.members === 0) {
+      query += `,
+      endDate = NOW()
+    `;
+    }
+    query += `,
+      members = ?
+    WHERE 
+      (groupId = ? OR roomId = ?)
+      AND callLink = ?
+      AND endDate IS NULL
+  `;
+    const params = [
+      data.isOnCall,
+      data.members,
+      data.groupId || null,
+      data.roomId || null,
+      data.callLink,
+    ];
+    const callData = await executeQuery(query, params);
+    console.log("endCallData====>", callData);
+
     return callData;
   } catch (error) {
-    return error;
+    console.error("Error in endCallData:", error); // Log the error for debugging
+    throw error; // Throw the error to ensure it can be handled by the caller
   }
 };
 
 const checkCall = async function (data) {
   try {
-    const query = `select * from calls_logs where profileId = ${data?.profileId} and isOnCall = 'Y' and endDate is null`;
+    console.log("params==>", data);
+    const query = `select * from calls_logs where (groupId = ${data?.groupId} or roomId = ${data?.roomId}) and isOnCall = 'Y' and members >=  1 and endDate is null`;
     const [callData] = await executeQuery(query);
+    console.log("callData", callData);
+
     return callData;
   } catch (error) {
     return error;
@@ -1153,7 +1255,6 @@ const suspendUser = async function (params) {
     return error;
   }
 };
-
 
 const sendNotificationEmail = async function (data) {
   try {
